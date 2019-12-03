@@ -1,4 +1,4 @@
-module github.com/pkg/sftp
+module github.com/wangchao475/sftp
 
 go 1.12
 
