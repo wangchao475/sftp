@@ -65,9 +65,9 @@ func testRequest(method string) *Request {
 	var flags uint32
 	switch method {
 	case "Get":
-		flags = flags | sshFxfRead
+		flags = flags | ssh_FXF_READ
 	case "Put":
-		flags = flags | sshFxfWrite
+		flags = flags | ssh_FXF_WRITE
 	}
 	request := &Request{
 		Filepath: "./request_test.go",
@@ -123,7 +123,7 @@ func getStatusMsg(p interface{}) string {
 }
 func checkOkStatus(t *testing.T, p interface{}) {
 	pkt := p.(sshFxpStatusPacket)
-	assert.Equal(t, pkt.StatusError.Code, uint32(sshFxOk),
+	assert.Equal(t, pkt.StatusError.Code, uint32(ssh_FX_OK),
 		"sshFxpStatusPacket not OK\n", pkt.StatusError.msg)
 }
 

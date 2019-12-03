@@ -116,7 +116,11 @@ func (rs *RequestServer) Serve() error {
 		if err != nil {
 			switch errors.Cause(err) {
 			case errUnknownExtendedPacket:
-				// do nothing
+				if err := rs.serverConn.sendError(pkt, ErrSshFxOpUnsupported); err != nil {
+					debug("failed to send err packet: %v", err)
+					rs.conn.Close() // shuts down recvPacket
+					break
+				}
 			default:
 				debug("makePacket err: %v", err)
 				rs.conn.Close() // shuts down recvPacket
@@ -133,20 +137,6 @@ func (rs *RequestServer) Serve() error {
 	// make sure all open requests are properly closed
 	// (eg. possible on dropped connections, client crashes, etc.)
 	for handle, req := range rs.openRequests {
-		if err != nil {
-			req.state.RLock()
-			writer := req.state.writerAt
-			reader := req.state.readerAt
-			req.state.RUnlock()
-			if t, ok := writer.(TransferError); ok {
-				debug("notify error: %v to writer: %v\n", err, writer)
-				t.TransferError(err)
-			}
-			if t, ok := reader.(TransferError); ok {
-				debug("notify error: %v to reader: %v\n", err, reader)
-				t.TransferError(err)
-			}
-		}
 		delete(rs.openRequests, handle)
 		req.close()
 	}
@@ -158,16 +148,10 @@ func (rs *RequestServer) packetWorker(
 	ctx context.Context, pktChan chan orderedRequest,
 ) error {
 	for pkt := range pktChan {
-		if epkt, ok := pkt.requestPacket.(*sshFxpExtendedPacket); ok {
-			if epkt.SpecificPacket != nil {
-				pkt.requestPacket = epkt.SpecificPacket
-			}
-		}
-
 		var rpkt responsePacket
 		switch pkt := pkt.requestPacket.(type) {
 		case *sshFxInitPacket:
-			rpkt = sshFxVersionPacket{Version: sftpProtocolVersion, Extensions: sftpExtensions}
+			rpkt = sshFxVersionPacket{Version: sftpProtocolVersion}
 		case *sshFxpClosePacket:
 			handle := pkt.getHandle()
 			rpkt = statusFromError(pkt, rs.closeRequest(handle))
@@ -190,10 +174,14 @@ func (rs *RequestServer) packetWorker(
 				request = NewRequest("Stat", request.Filepath)
 				rpkt = request.call(rs.Handlers, pkt)
 			}
-		case *sshFxpExtendedPacketPosixRename:
-			request := NewRequest("Rename", pkt.Oldpath)
-			request.Target = pkt.Newpath
-			rpkt = request.call(rs.Handlers, pkt)
+		case *sshFxpExtendedPacket:	//lx add
+			rpkt = sshFxpStatusPacket{
+				ID: pkt.id(),
+				StatusError: StatusError{
+					Code: ssh_FX_OP_UNSUPPORTED,
+					msg:"unsupported!",
+				},
+			}
 		case hasHandle:
 			handle := pkt.getHandle()
 			request, ok := rs.getRequest(handle)
@@ -207,11 +195,11 @@ func (rs *RequestServer) packetWorker(
 			rpkt = request.call(rs.Handlers, pkt)
 			request.close()
 		default:
-			rpkt = statusFromError(pkt, ErrSSHFxOpUnsupported)
+			return errors.Errorf("unexpected packet type %T", pkt)
 		}
 
 		rs.pktMgr.readyPacket(
-			rs.pktMgr.newOrderedResponse(rpkt, pkt.orderID()))
+			rs.pktMgr.newOrderedResponse(rpkt, pkt.orderId()))
 	}
 	return nil
 }

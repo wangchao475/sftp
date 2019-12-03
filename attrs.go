@@ -10,11 +10,11 @@ import (
 )
 
 const (
-	sshFileXferAttrSize        = 0x00000001
-	sshFileXferAttrUIDGID      = 0x00000002
-	sshFileXferAttrPermissions = 0x00000004
-	sshFileXferAttrACmodTime   = 0x00000008
-	sshFileXferAttrExtented    = 0x80000000
+	ssh_FILEXFER_ATTR_SIZE        = 0x00000001
+	ssh_FILEXFER_ATTR_UIDGID      = 0x00000002
+	ssh_FILEXFER_ATTR_PERMISSIONS = 0x00000004
+	ssh_FILEXFER_ATTR_ACMODTIME   = 0x00000008
+	ssh_FILEXFER_ATTR_EXTENDED    = 0x80000000
 )
 
 // fileInfo is an artificial type designed to satisfy os.FileInfo.
@@ -77,9 +77,9 @@ func fileInfoFromStat(st *FileStat, name string) os.FileInfo {
 func fileStatFromInfo(fi os.FileInfo) (uint32, FileStat) {
 	mtime := fi.ModTime().Unix()
 	atime := mtime
-	var flags uint32 = sshFileXferAttrSize |
-		sshFileXferAttrPermissions |
-		sshFileXferAttrACmodTime
+	var flags uint32 = ssh_FILEXFER_ATTR_SIZE |
+		ssh_FILEXFER_ATTR_PERMISSIONS |
+		ssh_FILEXFER_ATTR_ACMODTIME
 
 	fileStat := FileStat{
 		Size:  uint64(fi.Size()),
@@ -101,23 +101,23 @@ func unmarshalAttrs(b []byte) (*FileStat, []byte) {
 
 func getFileStat(flags uint32, b []byte) (*FileStat, []byte) {
 	var fs FileStat
-	if flags&sshFileXferAttrSize == sshFileXferAttrSize {
+	if flags&ssh_FILEXFER_ATTR_SIZE == ssh_FILEXFER_ATTR_SIZE {
 		fs.Size, b = unmarshalUint64(b)
 	}
-	if flags&sshFileXferAttrUIDGID == sshFileXferAttrUIDGID {
+	if flags&ssh_FILEXFER_ATTR_UIDGID == ssh_FILEXFER_ATTR_UIDGID {
 		fs.UID, b = unmarshalUint32(b)
 	}
-	if flags&sshFileXferAttrUIDGID == sshFileXferAttrUIDGID {
+	if flags&ssh_FILEXFER_ATTR_UIDGID == ssh_FILEXFER_ATTR_UIDGID {
 		fs.GID, b = unmarshalUint32(b)
 	}
-	if flags&sshFileXferAttrPermissions == sshFileXferAttrPermissions {
+	if flags&ssh_FILEXFER_ATTR_PERMISSIONS == ssh_FILEXFER_ATTR_PERMISSIONS {
 		fs.Mode, b = unmarshalUint32(b)
 	}
-	if flags&sshFileXferAttrACmodTime == sshFileXferAttrACmodTime {
+	if flags&ssh_FILEXFER_ATTR_ACMODTIME == ssh_FILEXFER_ATTR_ACMODTIME {
 		fs.Atime, b = unmarshalUint32(b)
 		fs.Mtime, b = unmarshalUint32(b)
 	}
-	if flags&sshFileXferAttrExtented == sshFileXferAttrExtented {
+	if flags&ssh_FILEXFER_ATTR_EXTENDED == ssh_FILEXFER_ATTR_EXTENDED {
 		var count uint32
 		count, b = unmarshalUint32(b)
 		ext := make([]StatExtended, count)
@@ -152,17 +152,17 @@ func marshalFileInfo(b []byte, fi os.FileInfo) []byte {
 	flags, fileStat := fileStatFromInfo(fi)
 
 	b = marshalUint32(b, flags)
-	if flags&sshFileXferAttrSize != 0 {
+	if flags&ssh_FILEXFER_ATTR_SIZE != 0 {
 		b = marshalUint64(b, fileStat.Size)
 	}
-	if flags&sshFileXferAttrUIDGID != 0 {
+	if flags&ssh_FILEXFER_ATTR_UIDGID != 0 {
 		b = marshalUint32(b, fileStat.UID)
 		b = marshalUint32(b, fileStat.GID)
 	}
-	if flags&sshFileXferAttrPermissions != 0 {
+	if flags&ssh_FILEXFER_ATTR_PERMISSIONS != 0 {
 		b = marshalUint32(b, fileStat.Mode)
 	}
-	if flags&sshFileXferAttrACmodTime != 0 {
+	if flags&ssh_FILEXFER_ATTR_ACMODTIME != 0 {
 		b = marshalUint32(b, fileStat.Atime)
 		b = marshalUint32(b, fileStat.Mtime)
 	}

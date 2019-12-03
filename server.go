@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	// SftpServerWorkerCount defines the number of workers for the SFTP server
 	SftpServerWorkerCount = 8
 )
 
@@ -142,7 +141,7 @@ func (svr *Server) sftpServerWorker(pktChan chan orderedRequest) error {
 		if !readonly && svr.readOnly {
 			svr.sendPacket(orderedResponse{
 				responsePacket: statusFromError(pkt, syscall.EPERM),
-				orderid:        pkt.orderID()})
+				orderid:        pkt.orderId()})
 			continue
 		}
 
@@ -157,10 +156,7 @@ func handlePacket(s *Server, p orderedRequest) error {
 	var rpkt responsePacket
 	switch p := p.requestPacket.(type) {
 	case *sshFxInitPacket:
-		rpkt = sshFxVersionPacket{
-			Version:    sftpProtocolVersion,
-			Extensions: sftpExtensions,
-		}
+		rpkt = sshFxVersionPacket{Version: sftpProtocolVersion}
 	case *sshFxpStatPacket:
 		// stat the requested file
 		info, err := os.Stat(p.Path)
@@ -250,7 +246,7 @@ func handlePacket(s *Server, p orderedRequest) error {
 			rpkt = sshFxpOpenPacket{
 				ID:     p.ID,
 				Path:   p.Path,
-				Pflags: sshFxfRead,
+				Pflags: ssh_FXF_READ,
 			}.respond(s)
 		}
 	case *sshFxpReadPacket:
@@ -280,19 +276,13 @@ func handlePacket(s *Server, p orderedRequest) error {
 			_, err = f.WriteAt(p.Data, int64(p.Offset))
 		}
 		rpkt = statusFromError(p, err)
-	case *sshFxpExtendedPacket:
-		if p.SpecificPacket == nil {
-			rpkt = statusFromError(p, ErrSSHFxOpUnsupported)
-		} else {
-			rpkt = p.respond(s)
-		}
 	case serverRespondablePacket:
 		rpkt = p.respond(s)
 	default:
 		return errors.Errorf("unexpected packet type %T", p)
 	}
 
-	s.pktMgr.readyPacket(s.pktMgr.newOrderedResponse(rpkt, p.orderID()))
+	s.pktMgr.readyPacket(s.pktMgr.newOrderedResponse(rpkt, p.orderId()))
 	return nil
 }
 
@@ -325,11 +315,11 @@ func (svr *Server) Serve() error {
 		if err != nil {
 			switch errors.Cause(err) {
 			case errUnknownExtendedPacket:
-				//if err := svr.serverConn.sendError(pkt, ErrSshFxOpUnsupported); err != nil {
-				//	debug("failed to send err packet: %v", err)
-				//	svr.conn.Close() // shuts down recvPacket
-				//	break
-				//}
+				if err := svr.serverConn.sendError(pkt, ErrSshFxOpUnsupported); err != nil {
+					debug("failed to send err packet: %v", err)
+					svr.conn.Close() // shuts down recvPacket
+					break
+				}
 			default:
 				debug("makePacket err: %v", err)
 				svr.conn.Close() // shuts down recvPacket
@@ -364,7 +354,7 @@ type sshFxpStatResponse struct {
 }
 
 func (p sshFxpStatResponse) MarshalBinary() ([]byte, error) {
-	b := []byte{sshFxpAttrs}
+	b := []byte{ssh_FXP_ATTRS}
 	b = marshalUint32(b, p.ID)
 	b = marshalFileInfo(b, p.info)
 	return b, nil
@@ -373,7 +363,7 @@ func (p sshFxpStatResponse) MarshalBinary() ([]byte, error) {
 var emptyFileStat = []interface{}{uint32(0)}
 
 func (p sshFxpOpenPacket) readonly() bool {
-	return !p.hasPflags(sshFxfWrite)
+	return !p.hasPflags(ssh_FXF_WRITE)
 }
 
 func (p sshFxpOpenPacket) hasPflags(flags ...uint32) bool {
@@ -387,27 +377,27 @@ func (p sshFxpOpenPacket) hasPflags(flags ...uint32) bool {
 
 func (p sshFxpOpenPacket) respond(svr *Server) responsePacket {
 	var osFlags int
-	if p.hasPflags(sshFxfRead, sshFxfWrite) {
+	if p.hasPflags(ssh_FXF_READ, ssh_FXF_WRITE) {
 		osFlags |= os.O_RDWR
-	} else if p.hasPflags(sshFxfWrite) {
+	} else if p.hasPflags(ssh_FXF_WRITE) {
 		osFlags |= os.O_WRONLY
-	} else if p.hasPflags(sshFxfRead) {
+	} else if p.hasPflags(ssh_FXF_READ) {
 		osFlags |= os.O_RDONLY
 	} else {
 		// how are they opening?
 		return statusFromError(p, syscall.EINVAL)
 	}
 
-	if p.hasPflags(sshFxfAppend) {
+	if p.hasPflags(ssh_FXF_APPEND) {
 		osFlags |= os.O_APPEND
 	}
-	if p.hasPflags(sshFxfCreat) {
+	if p.hasPflags(ssh_FXF_CREAT) {
 		osFlags |= os.O_CREATE
 	}
-	if p.hasPflags(sshFxfTrunc) {
+	if p.hasPflags(ssh_FXF_TRUNC) {
 		osFlags |= os.O_TRUNC
 	}
-	if p.hasPflags(sshFxfExcl) {
+	if p.hasPflags(ssh_FXF_EXCL) {
 		osFlags |= os.O_EXCL
 	}
 
@@ -449,19 +439,19 @@ func (p sshFxpSetstatPacket) respond(svr *Server) responsePacket {
 	var err error
 
 	debug("setstat name \"%s\"", p.Path)
-	if (p.Flags & sshFileXferAttrSize) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_SIZE) != 0 {
 		var size uint64
 		if size, b, err = unmarshalUint64Safe(b); err == nil {
 			err = os.Truncate(p.Path, int64(size))
 		}
 	}
-	if (p.Flags & sshFileXferAttrPermissions) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_PERMISSIONS) != 0 {
 		var mode uint32
 		if mode, b, err = unmarshalUint32Safe(b); err == nil {
 			err = os.Chmod(p.Path, os.FileMode(mode))
 		}
 	}
-	if (p.Flags & sshFileXferAttrACmodTime) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_ACMODTIME) != 0 {
 		var atime uint32
 		var mtime uint32
 		if atime, b, err = unmarshalUint32Safe(b); err != nil {
@@ -472,7 +462,7 @@ func (p sshFxpSetstatPacket) respond(svr *Server) responsePacket {
 			err = os.Chtimes(p.Path, atimeT, mtimeT)
 		}
 	}
-	if (p.Flags & sshFileXferAttrUIDGID) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_UIDGID) != 0 {
 		var uid uint32
 		var gid uint32
 		if uid, b, err = unmarshalUint32Safe(b); err != nil {
@@ -496,19 +486,19 @@ func (p sshFxpFsetstatPacket) respond(svr *Server) responsePacket {
 	var err error
 
 	debug("fsetstat name \"%s\"", f.Name())
-	if (p.Flags & sshFileXferAttrSize) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_SIZE) != 0 {
 		var size uint64
 		if size, b, err = unmarshalUint64Safe(b); err == nil {
 			err = f.Truncate(int64(size))
 		}
 	}
-	if (p.Flags & sshFileXferAttrPermissions) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_PERMISSIONS) != 0 {
 		var mode uint32
 		if mode, b, err = unmarshalUint32Safe(b); err == nil {
 			err = f.Chmod(os.FileMode(mode))
 		}
 	}
-	if (p.Flags & sshFileXferAttrACmodTime) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_ACMODTIME) != 0 {
 		var atime uint32
 		var mtime uint32
 		if atime, b, err = unmarshalUint32Safe(b); err != nil {
@@ -519,7 +509,7 @@ func (p sshFxpFsetstatPacket) respond(svr *Server) responsePacket {
 			err = os.Chtimes(f.Name(), atimeT, mtimeT)
 		}
 	}
-	if (p.Flags & sshFileXferAttrUIDGID) != 0 {
+	if (p.Flags & ssh_FILEXFER_ATTR_UIDGID) != 0 {
 		var uid uint32
 		var gid uint32
 		if uid, b, err = unmarshalUint32Safe(b); err != nil {
@@ -536,30 +526,30 @@ func (p sshFxpFsetstatPacket) respond(svr *Server) responsePacket {
 func translateErrno(errno syscall.Errno) uint32 {
 	switch errno {
 	case 0:
-		return sshFxOk
+		return ssh_FX_OK
 	case syscall.ENOENT:
-		return sshFxNoSuchFile
+		return ssh_FX_NO_SUCH_FILE
 	case syscall.EPERM:
-		return sshFxPermissionDenied
+		return ssh_FX_PERMISSION_DENIED
 	}
 
-	return sshFxFailure
+	return ssh_FX_FAILURE
 }
 
 func statusFromError(p ider, err error) sshFxpStatusPacket {
 	ret := sshFxpStatusPacket{
 		ID: p.id(),
 		StatusError: StatusError{
-			// sshFXOk               = 0
-			// sshFXEOF              = 1
-			// sshFXNoSuchFile       = 2 ENOENT
-			// sshFXPermissionDenied = 3
-			// sshFXFailure          = 4
-			// sshFXBadMessage       = 5
-			// sshFXNoConnection     = 6
-			// sshFXConnectionLost   = 7
-			// sshFXOPUnsupported    = 8
-			Code: sshFxOk,
+			// ssh_FX_OK                = 0
+			// ssh_FX_EOF               = 1
+			// ssh_FX_NO_SUCH_FILE      = 2 ENOENT
+			// ssh_FX_PERMISSION_DENIED = 3
+			// ssh_FX_FAILURE           = 4
+			// ssh_FX_BAD_MESSAGE       = 5
+			// ssh_FX_NO_CONNECTION     = 6
+			// ssh_FX_CONNECTION_LOST   = 7
+			// ssh_FX_OP_UNSUPPORTED    = 8
+			Code: ssh_FX_OK,
 		},
 	}
 	if err == nil {
@@ -567,7 +557,7 @@ func statusFromError(p ider, err error) sshFxpStatusPacket {
 	}
 
 	debug("statusFromError: error is %T %#v", err, err)
-	ret.StatusError.Code = sshFxFailure
+	ret.StatusError.Code = ssh_FX_FAILURE
 	ret.StatusError.msg = err.Error()
 
 	switch e := err.(type) {
@@ -583,9 +573,9 @@ func statusFromError(p ider, err error) sshFxpStatusPacket {
 	default:
 		switch e {
 		case io.EOF:
-			ret.StatusError.Code = sshFxEOF
+			ret.StatusError.Code = ssh_FX_EOF
 		case os.ErrNotExist:
-			ret.StatusError.Code = sshFxNoSuchFile
+			ret.StatusError.Code = ssh_FX_NO_SUCH_FILE
 		}
 	}
 
