@@ -147,6 +147,7 @@ func (s *packetManager) controller() {
 		case pkt := <-s.requests:
 			orderReq, ok := pkt.(orderedRequest)
 			if ok && orderReq.requestPacket == nil{  //解决调用secureCRT点击证书助手程序崩溃的问题
+				s.working.Done()
 				return
 			}
 			debug("incoming id (oid): %v (%v)", pkt.id(), pkt.orderId())
