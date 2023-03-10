@@ -145,8 +145,8 @@ func (s *packetManager) controller() {
 	for {
 		select {
 		case pkt := <-s.requests:
-			test, ok := pkt.(orderedRequest)
-			if ok && test.requestPacket == nil{
+			orderReq, ok := pkt.(orderedRequest)
+			if ok && orderReq.requestPacket == nil{  //解决调用secureCRT点击证书助手程序崩溃的问题
 				return
 			}
 			debug("incoming id (oid): %v (%v)", pkt.id(), pkt.orderId())
