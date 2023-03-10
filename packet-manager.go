@@ -145,8 +145,9 @@ func (s *packetManager) controller() {
 	for {
 		select {
 		case pkt := <-s.requests:
-			if pkt == nil{
-			   return
+			test, ok := pkt.(orderedRequest)
+			if ok && test.requestPacket == nil{
+				return
 			}
 			debug("incoming id (oid): %v (%v)", pkt.id(), pkt.orderId())
 			s.incoming = append(s.incoming, pkt)
