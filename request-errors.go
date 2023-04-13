@@ -27,7 +27,7 @@ func (e fxerr) Error() string {
 	case ErrSshFxNoSuchFile:
 		return "No Such File"
 	case ErrSshFxPermissionDenied:
-		return "Permission Denied"
+		return "没有权限"
 	case ErrSshFxBadMessage:
 		return "Bad Message"
 	case ErrSshFxNoConnection:
