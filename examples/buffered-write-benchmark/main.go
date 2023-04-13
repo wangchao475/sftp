@@ -14,7 +14,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"github.com/pkg/sftp"
+	"github.com/wangchao475/sftp"
 )
 
 var (
@@ -40,8 +40,8 @@ func main() {
 	}
 
 	config := ssh.ClientConfig{
-		User: *USER,
-		Auth: auths,
+		User:            *USER,
+		Auth:            auths,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 	addr := fmt.Sprintf("%s:%d", *HOST, *PORT)
