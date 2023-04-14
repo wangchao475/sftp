@@ -1240,7 +1240,7 @@ func unmarshalStatus(id uint32, data []byte) error {
 	code, data := unmarshalUint32(data)
 	msg, data, _ := unmarshalStringSafe(data)
 	if msg == "Permission denied" {
-		msg = "没有权限"
+		msg = "权限被拒绝"
 	}
 	lang, _, _ := unmarshalStringSafe(data)
 	return &StatusError{
